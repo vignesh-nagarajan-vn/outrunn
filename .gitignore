@@ -9,3 +9,4 @@ Secrets.xcconfig
 **/Secrets.plist
 .idea/
 *.swp
+.vercel/

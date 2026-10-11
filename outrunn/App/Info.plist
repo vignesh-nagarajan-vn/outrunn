@@ -16,8 +16,8 @@
 	<key>NSCameraUsageDescription</key>
 	<string>This app needs camera access to measure vitals.</string>
 	<key>SMARTSPECTRA_API_KEY</key>
-	<string>PASTE_SMARTSPECTRA_API_KEY</string>
-	<key>GEMINI_API_KEY</key>
-	<string>PASTE_GEMINI_API_KEY</string>
+	<string>$(SMARTSPECTRA_API_KEY)</string>
+	<key>COACH_BASE_URL</key>
+	<string>$(COACH_BASE_URL)</string>
 </dict>
 </plist>
