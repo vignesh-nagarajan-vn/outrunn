@@ -4,7 +4,7 @@
 const sdk = require("@anthropic-ai/sdk");
 const Anthropic = sdk.default || sdk;
 
-const MODEL = process.env.CLAUDE_MODEL || "claude-opus-5-5";
+const MODEL = process.env.CLAUDE_MODEL || "claude-sonnet-5-5";
 const MAX_BODY_BYTES = 8 * 1024;
 
 // Best effort rate limit. This memory belongs to one warm function instance,
