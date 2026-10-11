@@ -23,7 +23,7 @@
 <!--- AI and vitals --->
 <p align="center"><sub><b>AI & Vitals:</b></sub></p>
 <p align="center">
-  <img src="https://img.shields.io/badge/Google%20Gemini-%238E75B2.svg?style=for-the-badge&logo=googlegemini&logoColor=white">
+  <img src="https://img.shields.io/badge/Claude%20Opus%205.5-%23D97757.svg?style=for-the-badge&logo=anthropic&logoColor=white">
   <img src="https://img.shields.io/badge/Presage%20SmartSpectra-%2352ADB8.svg?style=for-the-badge">
 </p>
 
@@ -41,7 +41,7 @@
 
 - Reads pulse and breathing from a short camera scan (Presage SmartSpectra) and, if you allow it, sleep, steps, HRV, and heart rate from Apple Health.
 - Turns those into three ages with a fixed on-device formula, and shows which inputs add or remove years. Missing inputs are left out, not guessed.
-- Sends the numbers (never video) to Gemini to explain them and suggest a recovery plan. The model never changes the ages.
+- Sends the numbers (never video) to Claude Opus 5.5 to explain them and suggest a recovery plan. The model never changes the ages.
 
 ## *Runn* the App
 

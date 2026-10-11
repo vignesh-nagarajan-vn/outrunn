@@ -2,7 +2,7 @@
 // Body: { "snapshot": { numbers from the app } }
 // Returns the written plan. The model explains the app's numbers and never changes them.
 
-const { endpoint, generate, fail } = require("./_gemini");
+const { endpoint, generate, fail } = require("./_claude");
 
 const SYSTEM = `You are outrunn's recovery coach. Inputs are numbers only (a phone camera scan plus Apple Health). Never video.
 
@@ -123,8 +123,7 @@ module.exports = endpoint(async (body) => {
   const raw = await generate({
     system: SYSTEM,
     user: `Explain this outrunn snapshot and return JSON only:\n${JSON.stringify(snapshot)}`,
-    temperature: 0.4,
-    json: true,
+    effort: "medium",
   });
 
   let parsed;

@@ -2,7 +2,7 @@
 // Body: { "question": "...", "brief": "the athlete's numbers as a few lines of text" }
 // Returns { "text": "...", "route": "today" | "insights" | "history" | "settings" | "scan" | null }
 
-const { endpoint, generate, fail } = require("./_gemini");
+const { endpoint, generate, fail } = require("./_claude");
 
 const MAX_QUESTION = 240;
 const MAX_BRIEF = 2000;
@@ -40,8 +40,7 @@ module.exports = endpoint(async (body) => {
   const raw = await generate({
     system: SYSTEM,
     user: `Athlete brief:\n${brief}\n\nQuestion:\n${question}`,
-    temperature: 0.5,
-    json: false,
+    effort: "low",
   });
 
   let text = raw.trim();

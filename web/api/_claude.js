@@ -1,7 +1,10 @@
 // Shared by the two coach endpoints. Files starting with "_" are not routed by Vercel.
-// The Gemini key is read from the environment and never leaves the server.
+// The SDK reads ANTHROPIC_API_KEY from the environment. The key never leaves the server.
 
-const MODEL = process.env.GEMINI_MODEL || "gemini-3.6-flash";
+const sdk = require("@anthropic-ai/sdk");
+const Anthropic = sdk.default || sdk;
+
+const MODEL = process.env.CLAUDE_MODEL || "claude-opus-5-5";
 const MAX_BODY_BYTES = 8 * 1024;
 
 // Best effort rate limit. This memory belongs to one warm function instance,
@@ -58,36 +61,44 @@ function readBody(req) {
   return body;
 }
 
-async function generate({ system, user, temperature, json }) {
-  const key = process.env.GEMINI_API_KEY;
-  if (!key) throw fail(500, "The coach is not configured.");
+// One request, one answer. Thinking is adaptive on this model; effort sets its depth.
+// If the model declines on policy grounds, the API retries on its recommended fallback.
+async function generate({ system, user, effort }) {
+  if (!process.env.ANTHROPIC_API_KEY) throw fail(500, "The coach is not configured.");
+  const client = new Anthropic();
 
-  const generationConfig = { temperature };
-  if (json) generationConfig.responseMimeType = "application/json";
-
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-goog-api-key": key },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: system }] },
-        contents: [{ role: "user", parts: [{ text: user }] }],
-        generationConfig,
-      }),
+  let response;
+  try {
+    response = await client.beta.messages.create({
+      model: MODEL,
+      max_tokens: 16000,
+      system,
+      messages: [{ role: "user", content: user }],
+      output_config: { effort },
+      betas: ["server-side-fallback-2026-07-01"],
+      fallbacks: "default",
+    });
+  } catch (error) {
+    if (error instanceof Anthropic.AuthenticationError) {
+      console.error("Claude rejected the API key");
+      throw fail(500, "The coach is not configured.");
     }
-  );
-  if (!response.ok) {
-    console.error("Gemini request failed", response.status);
-    throw fail(502, "The coach is unavailable right now.");
+    if (error instanceof Anthropic.RateLimitError) {
+      throw fail(429, "The coach is busy. Try again in a minute.");
+    }
+    if (error instanceof Anthropic.APIError) {
+      console.error("Claude request failed", error.status, error.message);
+      throw fail(502, "The coach is unavailable right now.");
+    }
+    throw error;
   }
 
-  const data = await response.json();
-  const candidate = data && data.candidates && data.candidates[0];
-  const parts = (candidate && candidate.content && candidate.content.parts) || [];
-  const text = parts
-    .filter((part) => !part.thought && typeof part.text === "string")
-    .map((part) => part.text)
+  if (response.stop_reason === "refusal") {
+    throw fail(502, "The coach declined to answer that.");
+  }
+  const text = response.content
+    .filter((block) => block.type === "text")
+    .map((block) => block.text)
     .join("");
   if (!text) throw fail(502, "The coach returned nothing.");
   return text;

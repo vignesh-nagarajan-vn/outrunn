@@ -1,0 +1,7 @@
+{
+  "name": "outrunn-web",
+  "private": true,
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.133.0"
+  }
+}
