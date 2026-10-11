@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		8D7635A53055E0F70029F11F /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 8D7635813055D45C0029F11F /* GoogleSignIn */; };
 		8D9A1B223055F0110029F11F /* SmartSpectra in Frameworks */ = {isa = PBXBuildFile; productRef = 8D9A1B213055F0110029F11F /* SmartSpectra */; };
 /* End PBXBuildFile section */
 
@@ -19,7 +18,7 @@
 		8D7635823055D45C0029F11F /* Exceptions for "outrunn" folder in "outrunn" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				"Resources/Info.plist",
+				"App/Info.plist",
 			);
 			target = 8D76355D3055D45C0029F11F /* outrunn */;
 		};
@@ -41,7 +40,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				8D7635A53055E0F70029F11F /* GoogleSignIn in Frameworks */,
 				8D9A1B223055F0110029F11F /* SmartSpectra in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -85,7 +83,6 @@
 			);
 			name = outrunn;
 			packageProductDependencies = (
-				8D7635813055D45C0029F11F /* GoogleSignIn */,
 				8D9A1B213055F0110029F11F /* SmartSpectra */,
 			);
 			productName = outrunn;
@@ -117,7 +114,6 @@
 			mainGroup = 8D7635553055D45C0029F11F;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				8D7635803055D45C0029F11F /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
 				8D9A1B203055F0110029F11F /* XCRemoteSwiftPackageReference "SmartSpectra-Swift" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -203,7 +199,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
@@ -260,7 +256,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
@@ -275,13 +271,13 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = "outrunn/Resources/outrunn.entitlements";
+				CODE_SIGN_ENTITLEMENTS = "outrunn/App/outrunn.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 38GJQCP9L2;
+				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = "outrunn/Resources/Info.plist";
+				INFOPLIST_FILE = "outrunn/App/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = outrunn;
 				INFOPLIST_KEY_CFBundleName = outrunn;
 				INFOPLIST_KEY_NSCameraUsageDescription = "This app needs camera access to measure vitals.";
@@ -297,7 +293,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.krish.outrun;
+				PRODUCT_BUNDLE_IDENTIFIER = com.outrunn.app;
 				PRODUCT_NAME = outrunn;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -314,13 +310,13 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = "outrunn/Resources/outrunn.entitlements";
+				CODE_SIGN_ENTITLEMENTS = "outrunn/App/outrunn.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 38GJQCP9L2;
+				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = "outrunn/Resources/Info.plist";
+				INFOPLIST_FILE = "outrunn/App/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = outrunn;
 				INFOPLIST_KEY_CFBundleName = outrunn;
 				INFOPLIST_KEY_NSCameraUsageDescription = "This app needs camera access to measure vitals.";
@@ -336,7 +332,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.krish.outrun;
+				PRODUCT_BUNDLE_IDENTIFIER = com.outrunn.app;
 				PRODUCT_NAME = outrunn;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -372,14 +368,6 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		8D7635803055D45C0029F11F /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/google/GoogleSignIn-iOS.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 9.0.0;
-			};
-		};
 		8D9A1B203055F0110029F11F /* XCRemoteSwiftPackageReference "SmartSpectra-Swift" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/Presage-Security/SmartSpectra-Swift";
@@ -391,11 +379,6 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		8D7635813055D45C0029F11F /* GoogleSignIn */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 8D7635803055D45C0029F11F /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
-			productName = GoogleSignIn;
-		};
 		8D9A1B213055F0110029F11F /* SmartSpectra */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 8D9A1B203055F0110029F11F /* XCRemoteSwiftPackageReference "SmartSpectra-Swift" */;

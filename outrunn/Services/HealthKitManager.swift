@@ -2,8 +2,6 @@
 //  HealthKitManager.swift
 //  outrunn
 //
-//  Created by Krish Hariharan on 9/12/26.
-//
 
 import Foundation
 import HealthKit
@@ -18,7 +16,6 @@ struct HealthKitVitals: Hashable {
     var respiratoryRate: Double
     var activeEnergyBurned: Double
     var peakHeartRate: Int
-    var meanHeartRate: Int
 
     func asHealthContext() -> HealthContext {
         HealthContext(
@@ -41,7 +38,6 @@ final class HealthKitManager {
     static let shared = HealthKitManager()
 
     let store = HKHealthStore()
-    var lastSyncFailedGracefully = false
     var statusMessage: String?
 
     var isHealthDataAvailable: Bool {
@@ -62,8 +58,7 @@ final class HealthKitManager {
 
     func requestAuthorization(completion: @escaping (Bool) -> Void) {
         guard isHealthDataAvailable else {
-            lastSyncFailedGracefully = true
-            statusMessage = "Health data is unavailable on this device. Demo Scenario Mode is on."
+            statusMessage = "Health data is unavailable on this device."
             completion(false)
             return
         }
@@ -72,14 +67,12 @@ final class HealthKitManager {
             Task { @MainActor in
                 if let error {
                     self.statusMessage = error.localizedDescription
-                    self.lastSyncFailedGracefully = true
                     completion(false)
                     return
                 }
-                self.lastSyncFailedGracefully = !success
                 self.statusMessage = success
                     ? "Apple Health connected."
-                    : "Health authorization was not granted. Demo Scenario Mode is available."
+                    : "Health authorization was not granted."
                 completion(success)
             }
         }
@@ -88,7 +81,6 @@ final class HealthKitManager {
     /// 7-day Apple Health baseline plus recent peak HR for HRR cross-reference.
     func fetchLatestVitals() async -> HealthKitVitals? {
         guard isHealthDataAvailable else {
-            lastSyncFailedGracefully = true
             statusMessage = "Simulator or this device has no HealthKit store."
             return nil
         }
@@ -103,7 +95,6 @@ final class HealthKitManager {
         async let energy = statistic(.activeEnergyBurned, unit: .kilocalorie(), start: Calendar.current.startOfDay(for: .now), options: .cumulativeSum)
         async let sleep = latestSleep()
         async let peak = statistic(.heartRate, unit: bpm, start: threeHoursAgo, options: .discreteMax)
-        async let meanHR = statistic(.heartRate, unit: bpm, start: threeHoursAgo, options: .discreteAverage)
         async let steps = statistic(
             .stepCount,
             unit: .count(),
@@ -117,17 +108,14 @@ final class HealthKitManager {
         let energyValue = await energy
         let sleepInfo = await sleep
         let peakValue = await peak
-        let meanValue = await meanHR
         let stepValue = await steps
 
         let hasAnySample = [hrvValue, rhrValue, respValue, energyValue, sleepInfo?.hours, peakValue, stepValue].contains { $0 != nil }
         guard hasAnySample else {
-            lastSyncFailedGracefully = true
-            statusMessage = "No HealthKit samples yet. Open Apple Health, then tap Link Health again."
+            statusMessage = "No Apple Health samples yet. Open Apple Health, then turn the toggle on again."
             return nil
         }
 
-        lastSyncFailedGracefully = false
         statusMessage = "Apple Health sleep, steps, and vitals loaded."
         let sleepHours = sleepInfo?.hours ?? 0
         let sleepScore = sleepInfo?.score ?? Int(min(100, (sleepHours / 8.0) * 100).rounded())
@@ -139,35 +127,7 @@ final class HealthKitManager {
             stepCount: Int((stepValue ?? 0).rounded()),
             respiratoryRate: respValue ?? 14,
             activeEnergyBurned: energyValue ?? 0,
-            peakHeartRate: Int((peakValue ?? 0).rounded()),
-            meanHeartRate: Int((meanValue ?? 0).rounded())
-        )
-    }
-
-    /// Maps the most recent HealthKit samples into `UserRecoveryState`.
-    func fetchLatestVitals(into state: UserRecoveryState) async -> Bool {
-        guard let vitals = await fetchLatestVitals() else {
-            state.fallbackToDemoMode(
-                reason: statusMessage ?? "HealthKit unavailable. Demo Scenario Mode is on."
-            )
-            return false
-        }
-        state.applyLiveHealthKitVitals(vitals)
-        return true
-    }
-
-    /// Preview / simulator helper that mimics a successful HealthKit read.
-    static func mockVitals() -> HealthKitVitals {
-        HealthKitVitals(
-            restingHeartRate: 54,
-            hrvSDNN: 61,
-            sleepScore: 84,
-            sleepHours: 7.4,
-            stepCount: 8420,
-            respiratoryRate: 13.2,
-            activeEnergyBurned: 640,
-            peakHeartRate: 168,
-            meanHeartRate: 92
+            peakHeartRate: Int((peakValue ?? 0).rounded())
         )
     }
 
@@ -216,7 +176,6 @@ final class HealthKitManager {
             store.execute(query)
         }
     }
-
 }
 
 private func isAsleepCategory(_ value: Int) -> Bool {

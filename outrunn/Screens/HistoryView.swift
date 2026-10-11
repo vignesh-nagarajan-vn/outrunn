@@ -30,7 +30,7 @@ struct HistoryView: View {
                                 Text(reading.date, format: .dateTime.month(.abbreviated).day().year().hour().minute())
                                     .font(Neu.body(13))
                                     .foregroundStyle(Neu.muted)
-                                Text("Real \(fmt(reading.chronologicalAge))  ·  Bio \(fmt(reading.biologicalAge))  ·  Cardiac \(fmt(reading.cardiacAge))  ·  Resp \(fmt(reading.respiratoryAge))")
+                                Text("Real \(fmt(reading.chronologicalAge))  ·  Bio \(fmt(reading.biologicalAge))  ·  Cardiac \(fmt(reading.cardiacAge))  ·  Pulmonary \(fmt(reading.respiratoryAge))")
                                     .font(Neu.body())
                                     .foregroundStyle(Neu.ink)
                             }

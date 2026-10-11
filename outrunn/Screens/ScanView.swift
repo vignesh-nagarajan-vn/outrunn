@@ -1,16 +1,14 @@
 //
-//  PresageScanView.swift
+//  ScanView.swift
 //  outrunn
 //
-//  Official SmartSpectra API-key scan (Presage docs QuickStart),
-//  wired into outrun's age engine on Save.
+//  Presage SmartSpectra camera scan. Saves vitals only, never video.
 //
 
-import AVFoundation
 import SmartSpectra
 import SwiftUI
 
-struct PresageScanView: View {
+struct ScanView: View {
     var state: UserRecoveryState
     var minutesSinceAerobicActivity: Int
     var onFinished: () -> Void
@@ -41,11 +39,6 @@ struct PresageScanView: View {
         self.state = state
         self.minutesSinceAerobicActivity = minutesSinceAerobicActivity
         self.onFinished = onFinished
-    }
-
-    private static var apiKey: String {
-        (Bundle.main.object(forInfoDictionaryKey: "SMARTSPECTRA_API_KEY") as? String)?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
 
     private enum WaveformProminence {
@@ -212,7 +205,7 @@ struct PresageScanView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                     } else {
-                        Text("Link Apple Health in Add to separate sleep and steps from this scan.")
+                        Text("Turn on Apple Health in Settings to separate sleep and steps from this scan.")
                             .font(Neu.body(11))
                             .foregroundStyle(.white.opacity(0.7))
                     }
@@ -271,7 +264,7 @@ struct PresageScanView: View {
                     }
                     .frame(height: 120)
 
-                    Text("Keep face and upper chest visible and still. Pulse ~12s, breathing ~30s, HRV ~60s. Tap Stop to save vitals and return to the dashboard. Video is not stored.")
+                    Text("Keep face and upper chest visible and still. Pulse ~12s, breathing ~30s, HRV ~60s. Tap Stop to save vitals and return to Today. Video is not stored.")
                         .font(Neu.body(11))
                         .foregroundStyle(.white.opacity(0.7))
                         .multilineTextAlignment(.center)
@@ -286,9 +279,7 @@ struct PresageScanView: View {
         .preferredColorScheme(.dark)
         .task {
             try? await Task.sleep(for: .milliseconds(350))
-            if let vitals = await HealthKitManager.shared.fetchLatestVitals() {
-                state.applyLiveHealthKitVitals(vitals, recordHistory: false)
-            }
+            await refreshHealth()
             await startMeasurement()
         }
         .task(id: metricsUpdateToken) {
@@ -500,23 +491,11 @@ struct PresageScanView: View {
         latestHrv = nil
     }
 
-    private func configureSDK() {
-        sdk.config.apiKey = Self.apiKey
-        sdk.config.cameraPosition = .front
-        sdk.config.imageOutputEnabled = true
-        sdk.config.requestedMetrics =
-            SmartSpectraConfig.breathingMetrics + SmartSpectraConfig.cardioMetrics
-    }
-
-    private func ensureCameraAccess() async -> Bool {
-        switch AVCaptureDevice.authorizationStatus(for: .video) {
-        case .authorized:
-            return true
-        case .notDetermined:
-            return await AVCaptureDevice.requestAccess(for: .video)
-        default:
-            return false
-        }
+    private func refreshHealth() async {
+        guard state.isHealthLinked,
+              let vitals = await HealthKitManager.shared.fetchLatestVitals()
+        else { return }
+        state.applyHealthKitVitals(vitals)
     }
 
     private func toggleMeasurement() {
@@ -534,14 +513,14 @@ struct PresageScanView: View {
 
     private func startMeasurement() async {
         startError = nil
-        configureSDK()
+        ScanService.configure(sdk)
 
-        guard !Self.apiKey.isEmpty else {
+        guard !ScanService.apiKey.isEmpty else {
             startError = "Missing SmartSpectra API key."
             return
         }
 
-        let cameraAllowed = await ensureCameraAccess()
+        let cameraAllowed = await ScanService.ensureCameraAccess()
         guard cameraAllowed else {
             startError = "Camera access is required. Enable it in Settings → outrunn → Camera, then tap Start."
             return
@@ -577,7 +556,7 @@ struct PresageScanView: View {
         isSaving = true
         mergeCurrentMetrics()
 
-        let cameraHR = latestPulse.map { Double($0.value) } ?? Double(max(state.garminData.restingHeartRate, 60))
+        let cameraHR = latestPulse.map { Double($0.value) } ?? Double(max(state.baseline.restingHeartRate, 60))
         let breath = latestBreathing.map { Double($0.value) } ?? 16.5
         let quality = Double(latestPulse?.confidence ?? 70)
         let rmssd = displayedHrv.flatMap { $0.rmssd > 0 ? Double($0.rmssd) : nil }
@@ -585,17 +564,15 @@ struct PresageScanView: View {
 
         Task {
             await stopMeasurement()
-            // Persist vitals only — never write camera frames or video to disk.
-            if let vitals = await HealthKitManager.shared.fetchLatestVitals() {
-                state.applyLiveHealthKitVitals(vitals, recordHistory: false)
-            }
+            // Persist vitals only. Never write camera frames or video to disk.
+            await refreshHealth()
             if let rmssd {
-                state.garminData.hrvStatus = Int(rmssd.rounded())
+                state.baseline.hrv = Int(rmssd.rounded())
             }
             let hrr = UserRecoveryState.heartRateRecovery(
                 cameraHR: cameraHR,
                 peakHR: Double(state.recentPeakHeartRate),
-                restingHR: Double(state.garminData.restingHeartRate),
+                restingHR: Double(state.baseline.restingHeartRate),
                 minutesSinceAerobicActivity: minutesSinceAerobicActivity
             )
             await MainActor.run {
@@ -715,7 +692,81 @@ private extension View {
     }
 }
 
+struct AerobicRecencySheet: View {
+    var onContinue: (Int) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedMinutes: Double = 30
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Neu.canvas.ignoresSafeArea()
+
+                VStack(alignment: .leading, spacing: 24) {
+                    Text("Time After Workout")
+                        .font(Neu.heading(26))
+                        .foregroundStyle(Neu.ink)
+
+                    Text(label(for: Int(selectedMinutes.rounded())))
+                        .font(Neu.number(28))
+                        .foregroundStyle(Neu.accent)
+                        .frame(maxWidth: .infinity, alignment: .center)
+
+                    Slider(value: $selectedMinutes, in: 0...240, step: 5)
+                        .tint(Neu.accent)
+
+                    HStack {
+                        Text("Just now")
+                            .font(Neu.body(13))
+                            .foregroundStyle(Neu.muted)
+                        Spacer()
+                        Text("4 hours")
+                            .font(Neu.body(13))
+                            .foregroundStyle(Neu.muted)
+                    }
+
+                    Text("The coach uses this to tell incomplete recovery apart from your resting state.")
+                        .font(Neu.body())
+                        .foregroundStyle(Neu.muted)
+
+                    Spacer()
+
+                    Button {
+                        onContinue(Int(selectedMinutes.rounded()))
+                    } label: {
+                        Text("Continue to Scan")
+                            .font(Neu.button(17))
+                            .foregroundStyle(Neu.ink)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                    }
+                    .buttonStyle(NeuButtonStyle())
+                }
+                .padding(22)
+            }
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private func label(for minutes: Int) -> String {
+        if minutes == 0 { return "Just now" }
+        if minutes < 60 { return "\(minutes) minutes ago" }
+        let hours = minutes / 60
+        let remainder = minutes % 60
+        if remainder == 0 {
+            return hours == 1 ? "1 hour ago" : "\(hours) hours ago"
+        }
+        return "\(hours) hr \(remainder) min ago"
+    }
+}
+
 #Preview {
-    @Previewable @State var state = UserRecoveryState.mock
-    PresageScanView(state: state, minutesSinceAerobicActivity: 45, onFinished: {})
+    @Previewable @State var state = UserRecoveryState.preview
+    ScanView(state: state, minutesSinceAerobicActivity: 45, onFinished: {})
 }

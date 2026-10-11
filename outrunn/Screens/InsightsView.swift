@@ -10,7 +10,6 @@ struct InsightsView: View {
     var onOpenSettings: () -> Void = {}
     var onOpenRoute: (RoadrunnerRoute) -> Void = { _ in }
     var isVisible: Bool = true
-    var openCount: Int = 0
 
     @State private var roadrunnerDraft = ""
     @FocusState private var roadrunnerFocused: Bool
@@ -27,10 +26,6 @@ struct InsightsView: View {
             ScrollViewReader { proxy in
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 12) {
-                        Color.clear
-                            .frame(height: 1)
-                            .id("insightsTop")
-
                         refreshCard
                         roadrunnerCard
 
@@ -41,7 +36,7 @@ struct InsightsView: View {
                                     Text("Writing a new plan")
                                         .font(Neu.button(16))
                                         .foregroundStyle(Neu.ink)
-                                    Text(state.coachStatus ?? "Gemini is reading your latest scan…")
+                                    Text(state.coachStatus ?? "Reading your latest scan…")
                                         .font(Neu.body(14))
                                         .foregroundStyle(Neu.muted)
                                 }
@@ -54,19 +49,14 @@ struct InsightsView: View {
                         if let plan = state.latestCoachPlan {
                             hero(plan)
                                 .id("insightsPlan")
-                            agesRow(plan)
-                            readableBlock(
-                                kicker: "Scan vs wearables",
-                                title: "What the camera saw, vs Apple Health / Garmin",
-                                body: plan.scanVsLifestyle,
-                                tint: Neu.accent
-                            )
-                            if !plan.studyNotes.isEmpty {
+                            if !plan.scanVsLifestyle.isEmpty {
                                 readableBlock(
-                                    kicker: "Studies & your age group",
-                                    title: plan.ageGroup.isEmpty ? "Recovery baseline" : "Age group \(plan.ageGroup)",
-                                    body: [plan.recoveryWindow, plan.studyNotes].filter { !$0.isEmpty }.joined(separator: "\n\n"),
-                                    tint: Color(red: 0.55, green: 0.45, blue: 0.28)
+                                    kicker: "Scan vs Apple Health",
+                                    title: "What the camera saw, vs your week",
+                                    body: [plan.scanVsLifestyle, plan.recoveryWindow]
+                                        .filter { !$0.isEmpty }
+                                        .joined(separator: "\n\n"),
+                                    tint: Neu.accent
                                 )
                             }
                             if !plan.drivers.isEmpty {
@@ -84,22 +74,21 @@ struct InsightsView: View {
                             planSection(title: "Training", symbol: "figure.run", tint: Color(red: 0.86, green: 0.38, blue: 0.40), items: plan.training)
                             planSection(title: "Recovery", symbol: "moon.zzz.fill", tint: Color(red: 0.35, green: 0.55, blue: 0.86), items: plan.recovery)
                             planSection(title: "Long-term improvement", symbol: "chart.line.uptrend.xyaxis", tint: Neu.younger, items: plan.longTerm)
-                            planSection(title: "Recommended supplements", symbol: "pills.fill", tint: Color(red: 0.55, green: 0.45, blue: 0.28), items: plan.supplements)
                             if let caution = plan.caution, !caution.isEmpty {
                                 readableBlock(kicker: "Keep in mind", title: "Not a diagnosis", body: caution, tint: Neu.older)
                             }
                         } else if !state.isRefreshingCoach {
                             readableBlock(
                                 kicker: "Plan",
-                                title: state.hasCompletedBaseline ? "No Gemini plan yet" : "Scan first",
+                                title: state.hasCompletedBaseline ? "No plan yet" : "Scan first",
                                 body: state.hasCompletedBaseline
-                                    ? "Tap Repopulate Insights to generate a plan from your latest scan. Opening this page will not spend tokens on its own."
+                                    ? "Tap Repopulate to generate a plan from your latest scan."
                                     : "Complete a scan to unlock a personalized recovery plan.",
                                 tint: Neu.accent
                             )
                             .id("insightsPlan")
                             if let status = state.coachStatus {
-                                readableBlock(kicker: "Gemini", title: "Couldn’t finish the plan", body: status, tint: Neu.older)
+                                readableBlock(kicker: "Coach", title: "Couldn’t finish the plan", body: status, tint: Neu.older)
                             }
                         }
                     }
@@ -109,15 +98,9 @@ struct InsightsView: View {
                 }
                 .scrollDismissesKeyboard(.interactively)
                 .onChange(of: isVisible) { _, visible in
-                    if visible {
-                        scrollToTop(proxy)
-                    } else {
+                    if !visible {
                         resetRoadrunnerSession()
                     }
-                }
-                .onChange(of: openCount) { _, _ in
-                    guard isVisible else { return }
-                    scrollToTop(proxy)
                 }
                 .onChange(of: planJumpCount) { _, _ in
                     withAnimation(.easeInOut(duration: 0.3)) {
@@ -251,7 +234,7 @@ struct InsightsView: View {
     private var quotaCopy: String {
         let left = state.roadrunnerAsksRemaining
         if left == 0 {
-            return "Gemini used up"
+            return "None left today"
         }
         return "\(left) left today"
     }
@@ -347,15 +330,9 @@ struct InsightsView: View {
         if let scan = state.latestScan,
            let plan = state.latestCoachPlan,
            scan.capturedAt > plan.generatedAt.addingTimeInterval(2) {
-            return "Newer scan in — repopulate to match."
+            return "Newer scan in. Repopulate to match."
         }
         return nil
-    }
-
-    private func scrollToTop(_ proxy: ScrollViewProxy) {
-        DispatchQueue.main.async {
-            proxy.scrollTo("insightsTop", anchor: .top)
-        }
     }
 
     private func hero(_ plan: CoachPlan) -> some View {
@@ -379,30 +356,6 @@ struct InsightsView: View {
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(ConvexShape(shape: RoundedRectangle(cornerRadius: 24, style: .continuous)))
-    }
-
-    private func agesRow(_ plan: CoachPlan) -> some View {
-        HStack(spacing: 10) {
-            ageChip("Calendar", value: state.chronologicalAge)
-            ageChip("Scan", value: plan.scanImpliedAge ?? state.cardiacAge)
-            ageChip("Health", value: plan.lifestyleImpliedAge ?? Double(state.garminData.restingHeartRate > 0 ? state.chronologicalAge : state.biologicalAge))
-            ageChip("Combined", value: plan.adjustedBiologicalAge ?? state.biologicalAge)
-        }
-    }
-
-    private func ageChip(_ label: String, value: Double) -> some View {
-        VStack(spacing: 4) {
-            Text(label)
-                .font(Neu.emphasis(11))
-                .foregroundStyle(Neu.muted)
-            Text(String(format: "%.1f", value))
-                .font(Neu.number(18))
-                .foregroundStyle(Neu.ink)
-                .monospacedDigit()
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 12)
-        .background(ConvexShape(shape: RoundedRectangle(cornerRadius: 16, style: .continuous)))
     }
 
     private func readableBlock(kicker: String, title: String, body: String, tint: Color) -> some View {
@@ -486,4 +439,9 @@ struct InsightsView: View {
             .background(ConvexShape(shape: RoundedRectangle(cornerRadius: 22, style: .continuous)))
         )
     }
+}
+
+#Preview {
+    @Previewable @State var state = UserRecoveryState.preview
+    InsightsView(state: state)
 }

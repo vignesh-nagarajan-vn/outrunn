@@ -2,50 +2,38 @@
 //  MainShellView.swift
 //  outrunn
 //
-//  Created by Krish Hariharan on 9/12/26.
-//
 
 import SwiftUI
 
 enum ShellTab: Hashable {
-    case dashboard
-    case data
+    case today
     case insights
     case history
-    case add
 }
 
 struct MainShellView: View {
     var state: UserRecoveryState
-    var onLogOut: () -> Void
 
-    @State private var tab: ShellTab = .dashboard
+    @State private var tab: ShellTab = .today
     @State private var showSettings = false
-    @State private var insightsOpenCount = 0
     @State private var scanRequestCount = 0
 
     var body: some View {
         VStack(spacing: 0) {
             ZStack {
-                DashboardView(
+                TodayView(
                     state: state,
                     onOpenSettings: { showSettings = true },
-                    onSeeInsights: { openInsights() },
                     scanRequestCount: scanRequestCount
                 )
-                    .opacity(tab == .dashboard ? 1 : 0)
-                    .allowsHitTesting(tab == .dashboard)
-
-                DataView(state: state, onOpenSettings: { showSettings = true })
-                    .opacity(tab == .data ? 1 : 0)
-                    .allowsHitTesting(tab == .data)
+                    .opacity(tab == .today ? 1 : 0)
+                    .allowsHitTesting(tab == .today)
 
                 InsightsView(
                     state: state,
                     onOpenSettings: { showSettings = true },
                     onOpenRoute: openRoute,
-                    isVisible: tab == .insights,
-                    openCount: insightsOpenCount
+                    isVisible: tab == .insights
                 )
                     .opacity(tab == .insights ? 1 : 0)
                     .allowsHitTesting(tab == .insights)
@@ -53,10 +41,6 @@ struct MainShellView: View {
                 HistoryView(state: state, onOpenSettings: { showSettings = true })
                     .opacity(tab == .history ? 1 : 0)
                     .allowsHitTesting(tab == .history)
-
-                AddSourcesView(state: state, onOpenSettings: { showSettings = true })
-                    .opacity(tab == .add ? 1 : 0)
-                    .allowsHitTesting(tab == .add)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -68,17 +52,15 @@ struct MainShellView: View {
         .background(Neu.canvas.ignoresSafeArea())
         .animation(.easeInOut(duration: 0.18), value: tab)
         .sheet(isPresented: $showSettings) {
-            SettingsView(state: state, onLogOut: onLogOut)
+            SettingsView(state: state)
         }
     }
 
     private var tabBar: some View {
         HStack(spacing: 0) {
-            tabButton(.dashboard, icon: "house.fill", title: "Dash")
-            tabButton(.data, icon: "chart.xyaxis.line", title: "Data")
+            tabButton(.today, icon: "house.fill", title: "Today")
             tabButton(.insights, icon: "sparkles", title: "Insights")
             tabButton(.history, icon: "clock", title: "History")
-            tabButton(.add, icon: "plus", title: "Add")
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 6)
@@ -92,11 +74,7 @@ struct MainShellView: View {
         let selected = tab == value
         let isInsights = value == .insights
         return Button {
-            if value == .insights {
-                openInsights()
-            } else {
-                tab = value
-            }
+            tab = value
         } label: {
             VStack(spacing: 3) {
                 ZStack {
@@ -110,7 +88,7 @@ struct MainShellView: View {
                         .foregroundStyle(isInsights || selected ? Neu.accent : Neu.muted)
                         .symbolEffect(.pulse, options: .repeating.speed(0.35), isActive: isInsights && !selected)
                 }
-                Text(isInsights ? "AI" : title)
+                Text(title)
                     .font(Neu.tab(prominent: isInsights))
                     .foregroundStyle(isInsights || selected ? Neu.accent : Neu.muted.opacity(0.7))
             }
@@ -119,36 +97,27 @@ struct MainShellView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(isInsights ? "Insights AI" : title)
-    }
-
-    private func openInsights() {
-        insightsOpenCount += 1
-        tab = .insights
+        .accessibilityLabel(title)
     }
 
     private func openRoute(_ route: RoadrunnerRoute) {
         switch route {
-        case .dash:
-            tab = .dashboard
-        case .data:
-            tab = .data
+        case .today:
+            tab = .today
         case .insights:
-            openInsights()
+            tab = .insights
         case .history:
             tab = .history
-        case .add:
-            tab = .add
         case .settings:
             showSettings = true
         case .scan:
-            tab = .dashboard
+            tab = .today
             scanRequestCount += 1
         }
     }
 }
 
 #Preview {
-    @Previewable @State var state = UserRecoveryState.mock
-    MainShellView(state: state, onLogOut: {})
+    @Previewable @State var state = UserRecoveryState.preview
+    MainShellView(state: state)
 }
