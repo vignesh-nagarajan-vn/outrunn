@@ -23,7 +23,8 @@
 <!--- AI and vitals --->
 <p align="center"><sub><b>AI & Vitals:</b></sub></p>
 <p align="center">
-  <img src="https://img.shields.io/badge/Claude%20Sonnet%205.5-%23D97757.svg?style=for-the-badge&logo=anthropic&logoColor=white">
+  <img src="https://img.shields.io/badge/Claude%20Sonnet%205.5-D97757?style=for-the-badge&logo=claude&logoColor=white">
+  <img src="https://img.shields.io/badge/Anthropic%20SDK-%23191919.svg?style=for-the-badge&logo=anthropic&logoColor=white">
   <img src="https://img.shields.io/badge/Presage%20SmartSpectra-%2352ADB8.svg?style=for-the-badge">
 </p>
 
@@ -31,6 +32,7 @@
 <p align="center"><sub><b>Web & Infrastructure:</b></sub></p>
 <p align="center">
   <img src="https://img.shields.io/badge/vercel-%23000000.svg?style=for-the-badge&logo=vercel&logoColor=white">
+  <img src="https://img.shields.io/badge/Vercel%20Functions-%23000000.svg?style=for-the-badge&logo=vercel&logoColor=white">
   <img src="https://img.shields.io/badge/node.js-6DA55F?style=for-the-badge&logo=node.js&logoColor=white">
   <img src="https://img.shields.io/badge/javascript-%23323330.svg?style=for-the-badge&logo=javascript&logoColor=%23F7DF1E">
   <img src="https://img.shields.io/badge/html5-%23E34F26.svg?style=for-the-badge&logo=html5&logoColor=white">
