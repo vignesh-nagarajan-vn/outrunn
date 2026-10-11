@@ -6,7 +6,8 @@
 import SwiftUI
 
 struct InsightsView: View {
-    var state: UserRecoveryState
+    var store: Store
+    var coach: Coach
     var onOpenSettings: () -> Void = {}
     var onOpenRoute: (RoadrunnerRoute) -> Void = { _ in }
     var isVisible: Bool = true
@@ -29,14 +30,14 @@ struct InsightsView: View {
                         refreshCard
                         roadrunnerCard
 
-                        if state.isRefreshingCoach {
+                        if coach.isWritingPlan {
                             HStack(spacing: 12) {
                                 ProgressView()
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text("Writing a new plan")
                                         .font(Neu.button(16))
                                         .foregroundStyle(Neu.ink)
-                                    Text(state.coachStatus ?? "Reading your latest scan…")
+                                    Text("Reading your latest scan…")
                                         .font(Neu.body(14))
                                         .foregroundStyle(Neu.muted)
                                 }
@@ -46,7 +47,7 @@ struct InsightsView: View {
                             .background(ConvexShape(shape: RoundedRectangle(cornerRadius: 22, style: .continuous)))
                         }
 
-                        if let plan = state.latestCoachPlan {
+                        if let plan = store.data.plan {
                             hero(plan)
                                 .id("insightsPlan")
                             if !plan.scanVsLifestyle.isEmpty {
@@ -77,19 +78,20 @@ struct InsightsView: View {
                             if let caution = plan.caution, !caution.isEmpty {
                                 readableBlock(kicker: "Keep in mind", title: "Not a diagnosis", body: caution, tint: Neu.older)
                             }
-                        } else if !state.isRefreshingCoach {
+                        } else if !coach.isWritingPlan {
                             readableBlock(
                                 kicker: "Plan",
-                                title: state.hasCompletedBaseline ? "No plan yet" : "Scan first",
-                                body: state.hasCompletedBaseline
+                                title: hasScan ? "No plan yet" : "Scan first",
+                                body: hasScan
                                     ? "Tap Repopulate to generate a plan from your latest scan."
                                     : "Complete a scan to unlock a personalized recovery plan.",
                                 tint: Neu.accent
                             )
                             .id("insightsPlan")
-                            if let status = state.coachStatus {
-                                readableBlock(kicker: "Coach", title: "Couldn’t finish the plan", body: status, tint: Neu.older)
-                            }
+                        }
+
+                        if let error = coach.planError, !coach.isWritingPlan {
+                            readableBlock(kicker: "Coach", title: "Couldn’t finish the plan", body: error, tint: Neu.older)
                         }
                     }
                     .padding(.horizontal, ShellLayout.horizontalPadding)
@@ -133,18 +135,18 @@ struct InsightsView: View {
                 }
             }
             Spacer(minLength: 8)
-            if state.hasCompletedBaseline {
+            if hasScan {
                 Button {
-                    Task { await GeminiCoach.refreshPlan(for: state) }
+                    Task { await coach.refreshPlan() }
                 } label: {
-                    Text(state.isRefreshingCoach ? "Generating…" : "Repopulate")
+                    Text(coach.isWritingPlan ? "Generating…" : "Repopulate")
                         .font(Neu.button(14))
                         .foregroundStyle(Neu.ink)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)
                 }
                 .buttonStyle(NeuButtonStyle())
-                .disabled(state.isRefreshingCoach)
+                .disabled(coach.isWritingPlan)
                 .fixedSize()
             }
         }
@@ -164,7 +166,7 @@ struct InsightsView: View {
                     .foregroundStyle(Neu.ink)
                 BrandWordmark(kind: .roadrunner, size: 16)
                 Spacer(minLength: 8)
-                if state.hasCompletedBaseline, !state.isAskingRoadrunner, state.roadrunnerStatus == nil {
+                if hasScan, !coach.isAnswering, coach.chatError == nil {
                     Text(quotaCopy)
                         .font(Neu.body(11))
                         .foregroundStyle(Neu.muted)
@@ -173,15 +175,15 @@ struct InsightsView: View {
                 }
             }
 
-            if !state.roadrunnerMessages.isEmpty {
+            if !coach.messages.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    ForEach(Array(state.roadrunnerMessages.suffix(8))) { message in
+                    ForEach(Array(coach.messages.suffix(8))) { message in
                         roadrunnerBubble(message)
                     }
                 }
             }
 
-            if state.isAskingRoadrunner {
+            if coach.isAnswering {
                 HStack(spacing: 8) {
                     ProgressView()
                     Text("Checking your scan…")
@@ -190,7 +192,7 @@ struct InsightsView: View {
                 }
             }
 
-            if let status = state.roadrunnerStatus, !state.isAskingRoadrunner {
+            if let status = coach.chatError, !coach.isAnswering {
                 Text(status)
                     .font(Neu.body(12))
                     .foregroundStyle(Neu.older)
@@ -204,7 +206,7 @@ struct InsightsView: View {
                     .focused($roadrunnerFocused)
                     .submitLabel(.send)
                     .onSubmit { sendRoadrunner() }
-                    .disabled(state.isAskingRoadrunner)
+                    .disabled(coach.isAnswering)
 
                 Button {
                     sendRoadrunner()
@@ -232,7 +234,7 @@ struct InsightsView: View {
     }
 
     private var quotaCopy: String {
-        let left = state.roadrunnerAsksRemaining
+        let left = coach.questionsRemaining
         if left == 0 {
             return "None left today"
         }
@@ -243,14 +245,15 @@ struct InsightsView: View {
         roadrunnerDraft = ""
         roadrunnerFocused = false
         planJumpCount = 0
-        state.roadrunnerGeneration += 1
-        state.roadrunnerMessages = []
-        state.roadrunnerStatus = nil
-        state.isAskingRoadrunner = false
+        coach.resetChat()
+    }
+
+    private var hasScan: Bool {
+        store.estimate != nil
     }
 
     private var canSendRoadrunner: Bool {
-        !state.isAskingRoadrunner
+        !coach.isAnswering
             && !roadrunnerDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
@@ -260,7 +263,7 @@ struct InsightsView: View {
         roadrunnerDraft = ""
         roadrunnerFocused = false
         UIImpactFeedbackGenerator(style: .soft).impactOccurred()
-        Task { await GeminiCoach.askRoadrunner(question, for: state) }
+        Task { await coach.ask(question) }
     }
 
     @ViewBuilder
@@ -314,21 +317,21 @@ struct InsightsView: View {
     }
 
     private var lastUpdatedText: String {
-        guard let plan = state.latestCoachPlan else {
+        guard let plan = store.data.plan else {
             return "Not generated yet"
         }
         return plan.generatedAt.formatted(date: .abbreviated, time: .shortened)
     }
 
     private var compactAccuracyNote: String? {
-        if !state.hasCompletedBaseline {
+        if !hasScan {
             return "Scan first to generate a plan."
         }
-        if state.latestCoachPlan == nil {
+        if store.data.plan == nil {
             return "Tap Repopulate to generate a plan."
         }
-        if let scan = state.latestScan,
-           let plan = state.latestCoachPlan,
+        if let scan = store.latestScan,
+           let plan = store.data.plan,
            scan.capturedAt > plan.generatedAt.addingTimeInterval(2) {
             return "Newer scan in. Repopulate to match."
         }
@@ -442,6 +445,6 @@ struct InsightsView: View {
 }
 
 #Preview {
-    @Previewable @State var state = UserRecoveryState.preview
-    InsightsView(state: state)
+    @Previewable @State var store = Store.preview
+    InsightsView(store: store, coach: Coach(store: store))
 }

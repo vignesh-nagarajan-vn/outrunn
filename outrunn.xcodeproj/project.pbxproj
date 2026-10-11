@@ -281,7 +281,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = outrunn;
 				INFOPLIST_KEY_CFBundleName = outrunn;
 				INFOPLIST_KEY_NSCameraUsageDescription = "This app needs camera access to measure vitals.";
-				INFOPLIST_KEY_NSHealthShareUsageDescription = "outrunn reads HRV, resting heart rate, respiratory rate, energy, and sleep from Apple Health to estimate cardiac, pulmonary, and biological age.";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "outrunn reads heart rate, HRV, resting heart rate, steps, and sleep from Apple Health to estimate cardiac and biological age.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "outrunn does not write to Apple Health; this permission is required for HealthKit authorization.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -320,7 +320,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = outrunn;
 				INFOPLIST_KEY_CFBundleName = outrunn;
 				INFOPLIST_KEY_NSCameraUsageDescription = "This app needs camera access to measure vitals.";
-				INFOPLIST_KEY_NSHealthShareUsageDescription = "outrunn reads HRV, resting heart rate, respiratory rate, energy, and sleep from Apple Health to estimate cardiac, pulmonary, and biological age.";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "outrunn reads heart rate, HRV, resting heart rate, steps, and sleep from Apple Health to estimate cardiac and biological age.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "outrunn does not write to Apple Health; this permission is required for HealthKit authorization.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;

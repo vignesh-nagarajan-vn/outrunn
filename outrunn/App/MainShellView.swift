@@ -12,7 +12,8 @@ enum ShellTab: Hashable {
 }
 
 struct MainShellView: View {
-    var state: UserRecoveryState
+    var store: Store
+    var coach: Coach
 
     @State private var tab: ShellTab = .today
     @State private var showSettings = false
@@ -22,7 +23,8 @@ struct MainShellView: View {
         VStack(spacing: 0) {
             ZStack {
                 TodayView(
-                    state: state,
+                    store: store,
+                    coach: coach,
                     onOpenSettings: { showSettings = true },
                     scanRequestCount: scanRequestCount
                 )
@@ -30,7 +32,8 @@ struct MainShellView: View {
                     .allowsHitTesting(tab == .today)
 
                 InsightsView(
-                    state: state,
+                    store: store,
+                    coach: coach,
                     onOpenSettings: { showSettings = true },
                     onOpenRoute: openRoute,
                     isVisible: tab == .insights
@@ -38,7 +41,7 @@ struct MainShellView: View {
                     .opacity(tab == .insights ? 1 : 0)
                     .allowsHitTesting(tab == .insights)
 
-                HistoryView(state: state, onOpenSettings: { showSettings = true })
+                HistoryView(store: store, onOpenSettings: { showSettings = true })
                     .opacity(tab == .history ? 1 : 0)
                     .allowsHitTesting(tab == .history)
             }
@@ -52,7 +55,7 @@ struct MainShellView: View {
         .background(Neu.canvas.ignoresSafeArea())
         .animation(.easeInOut(duration: 0.18), value: tab)
         .sheet(isPresented: $showSettings) {
-            SettingsView(state: state)
+            SettingsView(store: store, coach: coach)
         }
     }
 
@@ -118,6 +121,6 @@ struct MainShellView: View {
 }
 
 #Preview {
-    @Previewable @State var state = UserRecoveryState.preview
-    MainShellView(state: state)
+    @Previewable @State var store = Store.preview
+    MainShellView(store: store, coach: Coach(store: store))
 }

@@ -2,37 +2,100 @@
 //  Models.swift
 //  outrunn
 //
+//  Plain values shared by the engine, the store, and the screens.
+//
 
 import Foundation
 
-struct HealthContext: Hashable, Codable {
-    var capturedAt: Date
-    var sleepScore: Int
-    var sleepHours: Double
-    var stepCount: Int
-    var restingHeartRate: Int
-    var hrvSDNN: Int
-    var respiratoryRate: Double
-    var activeEnergyBurned: Double
-    var peakHeartRate: Int
+nonisolated struct Profile: Hashable, Codable {
+    var name: String
+    var age: Double
+}
 
-    var lifestyleYears: Double {
-        let sleepYears = (75.0 - Double(sleepScore)) * 0.035
-        let restYears = sleepHours > 0 ? (7.5 - sleepHours) * 0.35 : 0
-        let stepYears = (8_000.0 - Double(stepCount)) / 4_000.0 * 0.55
-        return ((sleepYears + restYears + stepYears) * 10).rounded() / 10
+/// One camera scan. Vitals only, never video.
+nonisolated struct Scan: Identifiable, Hashable, Codable {
+    var id = UUID()
+    var capturedAt: Date = .now
+    var minutesSinceWorkout: Int
+    var heartRate: Int
+    var respiratoryRate: Double
+    /// Presage confidence in the pulse reading, 0 to 100.
+    var pulseConfidence: Double
+    /// Drop from the Apple Health peak heart rate to the scan heart rate.
+    /// Nil when there is no real peak to measure from.
+    var heartRateRecovery: Int?
+    /// Presage HRV as RMSSD in ms. Displayed only. The engine's HRV term is
+    /// calibrated for SDNN, so RMSSD never feeds it.
+    var rmssd: Double?
+    /// Presage Baevsky stress index.
+    var stressIndex: Double?
+}
+
+/// What Apple Health had at the last read. Every value is nil when Health had no sample.
+nonisolated struct HealthSnapshot: Hashable, Codable {
+    var capturedAt: Date = .now
+    /// Asleep time over the last 24 hours.
+    var sleepHours: Double?
+    /// Steps so far today.
+    var stepCount: Int?
+    /// 7 day average.
+    var restingHeartRate: Int?
+    /// 7 day average HRV as SDNN in ms.
+    var hrvSDNN: Double?
+    /// Highest heart rate inside `AgeEngine.peakWindowMinutes`.
+    var peakHeartRate: Int?
+
+    var isEmpty: Bool {
+        sleepHours == nil && stepCount == nil && restingHeartRate == nil
+            && hrvSDNN == nil && peakHeartRate == nil
     }
 }
 
-struct VitalsBaseline: Hashable, Codable {
-    var sleepScore: Int
-    var hrv: Int
-    var restingHeartRate: Int
+/// One input's contribution to biological age, in years. Negative is younger.
+nonisolated struct AgeFactor: Identifiable, Hashable, Codable {
+    nonisolated enum Kind: String, Codable {
+        case heartRateRecovery
+        case heartRateVariability
+        case breathingRate
+        case sleep
+        case steps
+    }
 
-    static let empty = VitalsBaseline(sleepScore: 0, hrv: 0, restingHeartRate: 0)
+    var kind: Kind
+    var years: Double
+
+    var id: Kind { kind }
+
+    var title: String {
+        switch kind {
+        case .heartRateRecovery: "Heart rate recovery"
+        case .heartRateVariability: "Heart rate variability"
+        case .breathingRate: "Breathing rate"
+        case .sleep: "Sleep"
+        case .steps: "Daily steps"
+        }
+    }
 }
 
-enum ChartTimeRange: String, CaseIterable, Identifiable, Codable {
+nonisolated struct AgeEstimate: Hashable, Codable {
+    var biological: Double
+    /// Nil when there is neither heart rate recovery nor HRV to base it on.
+    var cardiac: Double?
+    var pulmonary: Double
+    var factors: [AgeFactor]
+}
+
+/// The estimate as it stood right after a scan. Kept for the chart and History.
+nonisolated struct AgeReading: Identifiable, Hashable, Codable {
+    var id = UUID()
+    var date: Date
+    var chronological: Double
+    var biological: Double
+    var cardiac: Double?
+    var pulmonary: Double
+}
+
+nonisolated enum ChartTimeRange: String, CaseIterable, Identifiable, Codable {
     case day
     case week
     case month
@@ -71,7 +134,7 @@ enum ChartTimeRange: String, CaseIterable, Identifiable, Codable {
     }
 }
 
-enum DataResetScope {
+nonisolated enum DataResetScope {
     case day
     case week
     case all
@@ -83,40 +146,4 @@ enum DataResetScope {
         case .all: nil
         }
     }
-}
-
-enum BiologicalAgeBounds {
-    static func clamp(_ estimate: Double, chronological chrono: Double, younger: Double, older: Double) -> Double {
-        let floor = max(18, chrono - younger)
-        let ceiling = min(90, chrono + older)
-        let value = min(ceiling, max(floor, estimate))
-        return (value * 10).rounded() / 10
-    }
-}
-
-struct PreSageScan: Identifiable, Hashable, Codable {
-    var id: UUID = UUID()
-    var capturedAt: Date = .now
-    var hrrObserved: Int
-    var minutesSinceAerobicActivity: Int
-    var respiratoryRate: Double
-    var vascularScore: Double
-    var cameraHeartRate: Int
-    var signalQuality: Double
-    var stressScore: Double
-}
-
-struct AgeReading: Identifiable, Hashable, Codable {
-    var id: UUID = UUID()
-    var date: Date
-    var chronologicalAge: Double
-    var biologicalAge: Double
-    var cardiacAge: Double
-    var respiratoryAge: Double
-}
-
-struct AgeFactor: Identifiable, Hashable, Codable {
-    var id: String { title }
-    var title: String
-    var yearsDelta: Double
 }

@@ -15,7 +15,14 @@ struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var route: AppRoute = .splash
-    @State private var recoveryState = UserRecoveryState.restored()
+    @State private var store: Store
+    @State private var coach: Coach
+
+    init() {
+        let store = Store()
+        _store = State(initialValue: store)
+        _coach = State(initialValue: Coach(store: store))
+    }
 
     var body: some View {
         ZStack {
@@ -24,27 +31,27 @@ struct RootView: View {
             switch route {
             case .splash:
                 SplashView {
-                    route = recoveryState.hasProfile ? .main : .onboarding
+                    route = store.data.profile == nil ? .onboarding : .main
                 }
                 .transition(pushTransition)
 
             case .onboarding:
                 OnboardingView { name, age in
-                    recoveryState.updateProfile(name: name, chronologicalAge: age)
+                    store.saveProfile(name: name, age: age)
                     route = .main
                 }
                 .transition(pushTransition)
 
             case .main:
-                MainShellView(state: recoveryState)
+                MainShellView(store: store, coach: coach)
                     .transition(pushTransition)
             }
         }
         .preferredColorScheme(.light)
         .animation(.spring(response: 0.52, dampingFraction: 0.88), value: route)
-        .onChange(of: scenePhase) { _, phase in
-            if phase != .active {
-                recoveryState.persistSoon()
+        .onChange(of: scenePhase, initial: true) { _, phase in
+            if phase == .active {
+                Task { await store.refreshHealth() }
             }
         }
     }

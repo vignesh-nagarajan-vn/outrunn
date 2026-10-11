@@ -9,8 +9,9 @@ import SmartSpectra
 import SwiftUI
 
 struct ScanView: View {
-    var state: UserRecoveryState
-    var minutesSinceAerobicActivity: Int
+    var store: Store
+    var coach: Coach
+    var minutesSinceWorkout: Int
     var onFinished: () -> Void
 
     private enum TraceWindow {
@@ -30,16 +31,6 @@ struct ScanView: View {
     @State private var chestBuffer: [SmartSpectra.Measurement] = []
     @State private var abdomenBuffer: [SmartSpectra.Measurement] = []
     @State private var latestHrv: Hrv?
-
-    init(
-        state: UserRecoveryState,
-        minutesSinceAerobicActivity: Int,
-        onFinished: @escaping () -> Void
-    ) {
-        self.state = state
-        self.minutesSinceAerobicActivity = minutesSinceAerobicActivity
-        self.onFinished = onFinished
-    }
 
     private enum WaveformProminence {
         case primary
@@ -84,11 +75,6 @@ struct ScanView: View {
     private var hrvText: String {
         guard let value = displayedHrv?.rmssd, value > 0 else { return "--" }
         return formatMetric(value, digits: 1, suffix: " ms")
-    }
-
-    private var capturedStressScore: Double {
-        guard let value = displayedHrv?.baevsky, value.isFinite, value > 0 else { return 0 }
-        return Double(value)
     }
 
     private var pulseConfidenceColor: Color {
@@ -187,28 +173,10 @@ struct ScanView: View {
                     previewCard
                         .frame(height: 280)
 
-                    if let health = state.healthContext {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Apple Health Context")
-                                .font(Neu.label(12))
-                                .foregroundStyle(.white.opacity(0.8))
-                            Text(String(
-                                format: "Sleep %.1fh · %d steps · HRV %d ms. These lifestyle factors are separated from the camera scan so a rough night or low-step day is not treated as true biological aging.",
-                                health.sleepHours,
-                                health.stepCount,
-                                health.hrvSDNN
-                            ))
-                            .font(Neu.body(11))
-                            .foregroundStyle(.white.opacity(0.72))
-                        }
-                        .padding(12)
+                    Text(healthContextText)
+                        .font(Neu.body(11))
+                        .foregroundStyle(.white.opacity(0.7))
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    } else {
-                        Text("Turn on Apple Health in Settings to separate sleep and steps from this scan.")
-                            .font(Neu.body(11))
-                            .foregroundStyle(.white.opacity(0.7))
-                    }
 
                     HStack(spacing: 12) {
                         metricCard(
@@ -279,7 +247,7 @@ struct ScanView: View {
         .preferredColorScheme(.dark)
         .task {
             try? await Task.sleep(for: .milliseconds(350))
-            await refreshHealth()
+            await store.refreshHealth()
             await startMeasurement()
         }
         .task(id: metricsUpdateToken) {
@@ -491,11 +459,16 @@ struct ScanView: View {
         latestHrv = nil
     }
 
-    private func refreshHealth() async {
-        guard state.isHealthLinked,
-              let vitals = await HealthKitManager.shared.fetchLatestVitals()
-        else { return }
-        state.applyHealthKitVitals(vitals)
+    private var healthContextText: String {
+        guard let health = store.data.health else {
+            return "Turn on Apple Health in Settings to add sleep, steps, HRV, and heart rate recovery to this scan."
+        }
+        var parts: [String] = []
+        if let hours = health.sleepHours { parts.append(String(format: "sleep %.1f h", hours)) }
+        if let steps = health.stepCount { parts.append("\(steps) steps") }
+        if let sdnn = health.hrvSDNN { parts.append(String(format: "HRV %.0f ms", sdnn)) }
+        return "Apple Health: " + parts.joined(separator: ", ")
+            + ". These are kept separate from the camera scan."
     }
 
     private func toggleMeasurement() {
@@ -551,45 +524,50 @@ struct ScanView: View {
         }
     }
 
+    /// Saves only what the camera actually measured. With no pulse or
+    /// breathing reading there is nothing to save, so the scan keeps running.
     private func saveAndReturn() {
         guard !isSaving else { return }
-        isSaving = true
         mergeCurrentMetrics()
 
-        let cameraHR = latestPulse.map { Double($0.value) } ?? Double(max(state.baseline.restingHeartRate, 60))
-        let breath = latestBreathing.map { Double($0.value) } ?? 16.5
-        let quality = Double(latestPulse?.confidence ?? 70)
+        guard let pulse = latestPulse, let breathing = latestBreathing else {
+            startError = "No pulse and breathing reading yet. Hold still a little longer, then tap Stop."
+            return
+        }
+        isSaving = true
+        startError = nil
+
+        let heartRate = Int(Double(pulse.value).rounded())
+        let respiratoryRate = Double(breathing.value)
+        let confidence = min(100, max(0, Double(pulse.confidence)))
         let rmssd = displayedHrv.flatMap { $0.rmssd > 0 ? Double($0.rmssd) : nil }
-        let stressScore = capturedStressScore
+        let stressIndex = displayedHrv.flatMap { hrv -> Double? in
+            hrv.baevsky.isFinite && hrv.baevsky > 0 ? Double(hrv.baevsky) : nil
+        }
 
         Task {
             await stopMeasurement()
+            await store.refreshHealth()
             // Persist vitals only. Never write camera frames or video to disk.
-            await refreshHealth()
-            if let rmssd {
-                state.baseline.hrv = Int(rmssd.rounded())
-            }
-            let hrr = UserRecoveryState.heartRateRecovery(
-                cameraHR: cameraHR,
-                peakHR: Double(state.recentPeakHeartRate),
-                restingHR: Double(state.baseline.restingHeartRate),
-                minutesSinceAerobicActivity: minutesSinceAerobicActivity
-            )
-            await MainActor.run {
-                state.applyPreSageScan(
-                    hrrObserved: hrr,
-                    respiratoryRate: breath,
-                    vascularScore: min(100, max(8, quality)),
-                    minutesSinceAerobicActivity: minutesSinceAerobicActivity,
-                    cameraHeartRate: Int(cameraHR.rounded()),
-                    signalQuality: min(100, max(0, quality)),
-                    stressScore: stressScore
+            store.addScan(
+                Scan(
+                    minutesSinceWorkout: minutesSinceWorkout,
+                    heartRate: heartRate,
+                    respiratoryRate: respiratoryRate,
+                    pulseConfidence: confidence,
+                    heartRateRecovery: AgeEngine.heartRateRecovery(
+                        peak: store.data.health?.peakHeartRate,
+                        current: heartRate,
+                        minutesSinceWorkout: minutesSinceWorkout
+                    ),
+                    rmssd: rmssd,
+                    stressIndex: stressIndex
                 )
-                isSaving = false
-                onFinished()
-                dismiss()
-            }
-            await GeminiCoach.refreshPlan(for: state)
+            )
+            isSaving = false
+            onFinished()
+            dismiss()
+            await coach.refreshPlan()
         }
     }
 
@@ -767,6 +745,6 @@ struct AerobicRecencySheet: View {
 }
 
 #Preview {
-    @Previewable @State var state = UserRecoveryState.preview
-    ScanView(state: state, minutesSinceAerobicActivity: 45, onFinished: {})
+    @Previewable @State var store = Store.preview
+    ScanView(store: store, coach: Coach(store: store), minutesSinceWorkout: 45, onFinished: {})
 }

@@ -15,11 +15,11 @@ enum RoadrunnerGuide {
     }
 
     @MainActor
-    static func resolve(_ question: String, state: UserRecoveryState) -> Answer? {
+    static func resolve(_ question: String, store: Store) -> Answer? {
         let q = normalize(question)
         guard !q.isEmpty else { return nil }
 
-        if let fact = factAnswer(q, state: state) {
+        if let fact = factAnswer(q, store: store) {
             return fact
         }
 
@@ -57,26 +57,48 @@ enum RoadrunnerGuide {
         ])
     }
 
+    /// The few lines of context sent with a question. Anything not measured is named as such.
     @MainActor
-    static func brief(for state: UserRecoveryState) -> String {
-        let chrono = state.chronologicalAge
+    static func brief(for store: Store) -> String {
+        guard let estimate = store.estimate else { return "No scan yet." }
+        let age = store.age
         var lines = [
-            "Real Age: \(years(chrono))",
-            "Biological Age: \(years(state.biologicalAge)) (\(vsReal(state.biologicalAge, chrono: chrono)))",
-            "Cardiac Age: \(years(state.cardiacAge)) (\(vsReal(state.cardiacAge, chrono: chrono)))",
-            "Pulmonary Age: \(years(state.pulmonaryAge)) (\(vsReal(state.pulmonaryAge, chrono: chrono)))"
+            "Real Age: \(years(age))",
+            "Biological Age: \(years(estimate.biological)) (\(vsReal(estimate.biological, age: age)))",
+            "Pulmonary Age: \(years(estimate.pulmonary)) (\(vsReal(estimate.pulmonary, age: age)))"
         ]
-        if let scan = state.latestScan {
-            lines.append(
-                "Last scan: pulse \(scan.cameraHeartRate) bpm, breathing \(Int(scan.respiratoryRate.rounded()))/min, recovery \(scan.hrrObserved) beats, stress \(Int(scan.stressScore.rounded())), quality \(Int(scan.signalQuality.rounded())), \(scan.minutesSinceAerobicActivity) min after workout"
-            )
+        if let cardiac = estimate.cardiac {
+            lines.append("Cardiac Age: \(years(cardiac)) (\(vsReal(cardiac, age: age)))")
+        } else {
+            lines.append("Cardiac Age: not available, not enough heart rate data")
         }
-        if let health = state.healthContext {
-            lines.append(
-                "Apple Health: sleep \(String(format: "%.1f", health.sleepHours)) h, RHR \(health.restingHeartRate), HRV \(health.hrvSDNN), steps \(health.stepCount)"
-            )
+        if let scan = store.latestScan {
+            var parts = [
+                "pulse \(scan.heartRate) bpm",
+                "breathing \(Int(scan.respiratoryRate.rounded()))/min",
+                scan.heartRateRecovery.map { "heart rate recovery \($0) beats" } ?? "heart rate recovery not available",
+                "pulse confidence \(Int(scan.pulseConfidence.rounded()))",
+                "\(scan.minutesSinceWorkout) min after workout"
+            ]
+            if let rmssd = scan.rmssd {
+                parts.append("scan HRV (RMSSD) \(Int(rmssd.rounded())) ms")
+            }
+            if let stress = scan.stressIndex {
+                parts.append("stress index \(Int(stress.rounded()))")
+            }
+            lines.append("Last scan: " + parts.joined(separator: ", "))
         }
-        if let plan = state.latestCoachPlan {
+        if let health = store.data.health {
+            var parts: [String] = []
+            if let hours = health.sleepHours { parts.append("sleep \(String(format: "%.1f", hours)) h") }
+            if let rhr = health.restingHeartRate { parts.append("resting HR \(rhr)") }
+            if let sdnn = health.hrvSDNN { parts.append("HRV (SDNN) \(Int(sdnn.rounded())) ms") }
+            if let steps = health.stepCount { parts.append("steps \(steps)") }
+            lines.append("Apple Health: " + parts.joined(separator: ", "))
+        } else {
+            lines.append("Apple Health: not connected")
+        }
+        if let plan = store.data.plan {
             lines.append("Plan: \(plan.headline)")
             if let today = plan.today.first {
                 lines.append("Today: \(today)")
@@ -86,43 +108,46 @@ enum RoadrunnerGuide {
     }
 
     @MainActor
-    private static func factAnswer(_ q: String, state: UserRecoveryState) -> Answer? {
+    private static func factAnswer(_ q: String, store: Store) -> Answer? {
         let askingMine = containsAny(q, ["what is my", "whats my", "how old am i", "what are my"])
-        guard askingMine, state.hasCompletedBaseline else { return nil }
-        let chrono = state.chronologicalAge
+        guard askingMine, let estimate = store.estimate else { return nil }
+        let age = store.age
         if containsAny(q, ["biological"]) {
             return Answer(
-                text: "Biological Age is \(years(state.biologicalAge)), \(vsReal(state.biologicalAge, chrono: chrono)).",
+                text: "Biological Age is \(years(estimate.biological)), \(vsReal(estimate.biological, age: age)).",
                 route: .today
             )
         }
         if containsAny(q, ["cardiac", "heart age"]) {
-            return Answer(
-                text: "Cardiac Age is \(years(state.cardiacAge)), \(vsReal(state.cardiacAge, chrono: chrono)).",
-                route: .today
-            )
+            guard let cardiac = estimate.cardiac else {
+                return Answer(
+                    text: "There is not enough data for Cardiac Age yet. It needs heart rate recovery or HRV from Apple Health.",
+                    route: .settings
+                )
+            }
+            return Answer(text: "Cardiac Age is \(years(cardiac)), \(vsReal(cardiac, age: age)).", route: .today)
         }
         if containsAny(q, ["pulmonary", "lung"]) {
             return Answer(
-                text: "Pulmonary Age is \(years(state.pulmonaryAge)), \(vsReal(state.pulmonaryAge, chrono: chrono)).",
+                text: "Pulmonary Age is \(years(estimate.pulmonary)), \(vsReal(estimate.pulmonary, age: age)).",
                 route: .today
             )
         }
         if containsAny(q, ["real age", "calendar"]) {
-            return Answer(text: "Real Age is \(years(chrono)).", route: .today)
+            return Answer(text: "Real Age is \(years(age)).", route: .today)
         }
-        guard let scan = state.latestScan else { return nil }
-        if containsAny(q, ["pulse", "heart rate", " bpm"]), scan.cameraHeartRate > 0 {
-            return Answer(text: "Last scan pulse was \(scan.cameraHeartRate) bpm.", route: .today)
+        guard let scan = store.latestScan else { return nil }
+        if containsAny(q, ["pulse", "heart rate", " bpm"]) {
+            return Answer(text: "Last scan pulse was \(scan.heartRate) bpm.", route: .today)
         }
-        if containsAny(q, ["breathing", "respiratory"]), scan.respiratoryRate > 0 {
+        if containsAny(q, ["breathing", "respiratory"]) {
             return Answer(
                 text: "Last scan breathing was \(Int(scan.respiratoryRate.rounded())) breaths/min.",
                 route: .today
             )
         }
-        if containsAny(q, ["stress"]), scan.stressScore > 0 {
-            return Answer(text: "Last scan stress was \(Int(scan.stressScore.rounded())).", route: .today)
+        if containsAny(q, ["stress"]), let stress = scan.stressIndex {
+            return Answer(text: "Last scan stress index was \(Int(stress.rounded())).", route: .today)
         }
         return nil
     }
@@ -180,8 +205,8 @@ enum RoadrunnerGuide {
         String(format: "%.1f", value)
     }
 
-    private static func vsReal(_ value: Double, chrono: Double) -> String {
-        let delta = value - chrono
+    private static func vsReal(_ value: Double, age: Double) -> String {
+        let delta = value - age
         if abs(delta) < 0.3 { return "about the same as Real Age" }
         if delta > 0 {
             return String(format: "%.1f years older than Real Age", delta)

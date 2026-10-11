@@ -6,7 +6,7 @@
 import SwiftUI
 
 struct HistoryView: View {
-    var state: UserRecoveryState
+    var store: Store
     var onOpenSettings: () -> Void = {}
 
     var body: some View {
@@ -15,7 +15,7 @@ struct HistoryView: View {
                 SettingsGearButton(action: onOpenSettings)
             }
 
-            if state.ageHistory.isEmpty && state.scanHistory.isEmpty {
+            if store.data.readings.isEmpty {
                 Spacer(minLength: 0)
                 Text("Scans you complete will land here and stay stored.")
                     .font(Neu.body(16))
@@ -25,12 +25,12 @@ struct HistoryView: View {
             } else {
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 12) {
-                        ForEach(state.ageHistory.reversed()) { reading in
+                        ForEach(store.data.readings.reversed()) { reading in
                             VStack(alignment: .leading, spacing: 8) {
                                 Text(reading.date, format: .dateTime.month(.abbreviated).day().year().hour().minute())
                                     .font(Neu.body(13))
                                     .foregroundStyle(Neu.muted)
-                                Text("Real \(fmt(reading.chronologicalAge))  ·  Bio \(fmt(reading.biologicalAge))  ·  Cardiac \(fmt(reading.cardiacAge))  ·  Pulmonary \(fmt(reading.respiratoryAge))")
+                                Text("Real \(fmt(reading.chronological))  ·  Bio \(fmt(reading.biological))  ·  Cardiac \(fmt(reading.cardiac))  ·  Pulmonary \(fmt(reading.pulmonary))")
                                     .font(Neu.body())
                                     .foregroundStyle(Neu.ink)
                             }
@@ -47,7 +47,13 @@ struct HistoryView: View {
         .padding(.top, ShellLayout.topPadding)
     }
 
-    private func fmt(_ value: Double) -> String {
-        String(format: "%.1f", value)
+    /// Two dashes mean the value could not be estimated for that scan.
+    private func fmt(_ value: Double?) -> String {
+        value.map { String(format: "%.1f", $0) } ?? "--"
     }
+}
+
+#Preview {
+    @Previewable @State var store = Store.preview
+    HistoryView(store: store)
 }

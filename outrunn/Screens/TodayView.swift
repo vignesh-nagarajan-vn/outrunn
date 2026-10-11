@@ -42,7 +42,8 @@ private struct SnapshotStat: Identifiable {
 }
 
 struct TodayView: View {
-    var state: UserRecoveryState
+    var store: Store
+    var coach: Coach
     var onOpenSettings: () -> Void = {}
     var scanRequestCount: Int = 0
 
@@ -62,17 +63,17 @@ struct TodayView: View {
                 VStack(alignment: .leading, spacing: 18) {
                     scanButton
 
-                    if state.hasCompletedBaseline {
-                        ageRings
-                        deltaCard
+                    if let estimate = store.estimate {
+                        ageRings(estimate)
+                        deltaCard(estimate)
                     }
 
                     ageChart
                         .frame(height: 340)
 
-                    if state.hasCompletedBaseline {
-                        snapshotSection
-                        yearsSection
+                    if let estimate = store.estimate, let scan = store.latestScan {
+                        snapshotSection(scan)
+                        yearsSection(estimate)
                     }
 
                     Text("A wellness estimate, not medical advice or a diagnosis.")
@@ -86,7 +87,7 @@ struct TodayView: View {
             }
         }
         .preferredColorScheme(.light)
-        .animation(.easeInOut(duration: 0.35), value: state.biologicalAge)
+        .animation(.easeInOut(duration: 0.35), value: store.estimate?.biological)
         .sheet(isPresented: $showActivityPrompt) {
             AerobicRecencySheet { minutes in
                 pendingMinutes = minutes
@@ -98,8 +99,9 @@ struct TodayView: View {
         }
         .fullScreenCover(isPresented: $showScan) {
             ScanView(
-                state: state,
-                minutesSinceAerobicActivity: pendingMinutes
+                store: store,
+                coach: coach,
+                minutesSinceWorkout: pendingMinutes
             ) {
                 showScan = false
             }
@@ -123,7 +125,7 @@ struct TodayView: View {
                     .frame(width: 44, height: 44)
                     .background(ConvexShape(shape: Circle(), isPressed: true))
 
-                Text(state.hasCompletedBaseline ? "Take a New Scan" : "Take Your Baseline Scan")
+                Text(store.estimate != nil ? "Take a New Scan" : "Take Your Baseline Scan")
                     .font(Neu.heading(18))
                     .italic()
                     .foregroundStyle(Neu.ink)
@@ -144,17 +146,27 @@ struct TodayView: View {
 
     // MARK: Age rings
 
-    private var ageRings: some View {
-        HStack(spacing: 12) {
-            ageRing(.cardiac, age: state.cardiacAge, size: 82)
-            ageRing(.biological, age: state.biologicalAge, size: 152)
-            ageRing(.respiratory, age: state.respiratoryAge, size: 82)
+    private func ageRings(_ estimate: AgeEstimate) -> some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 12) {
+                ageRing(.cardiac, age: estimate.cardiac, size: 82)
+                ageRing(.biological, age: estimate.biological, size: 152)
+                ageRing(.respiratory, age: estimate.pulmonary, size: 82)
+            }
+            .frame(maxWidth: .infinity)
+
+            if estimate.cardiac == nil {
+                Text("Not enough data for Cardiac Age. It needs heart rate recovery or HRV from Apple Health.")
+                    .font(Neu.body(13))
+                    .foregroundStyle(Neu.muted)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
-        .frame(maxWidth: .infinity)
         .padding(.top, 4)
     }
 
-    private func ageRing(_ metric: AgeMetric, age: Double, size: CGFloat) -> some View {
+    private func ageRing(_ metric: AgeMetric, age: Double?, size: CGFloat) -> some View {
         let isPrimary = metric == .biological
         return ZStack {
             ConvexShape(shape: Circle())
@@ -163,7 +175,7 @@ struct TodayView: View {
                 .stroke(metric.color.opacity(isPrimary ? 1 : 0.45), lineWidth: isPrimary ? 7 : 5)
 
             VStack(spacing: isPrimary ? 6 : 4) {
-                Text(String(format: "%.1f", age))
+                Text(age.map { String(format: "%.1f", $0) } ?? "--")
                     .font(Neu.number(isPrimary ? 40 : 20))
                     .foregroundStyle(Neu.ink)
                     .monospacedDigit()
@@ -179,8 +191,8 @@ struct TodayView: View {
         .frame(width: size, height: size)
     }
 
-    private var deltaCard: some View {
-        let years = state.biologicalAge - state.chronologicalAge
+    private func deltaCard(_ estimate: AgeEstimate) -> some View {
+        let years = estimate.biological - store.age
         let headline: String
         if abs(years) < 0.15 {
             headline = "Biological Age matches your Real Age."
@@ -195,7 +207,7 @@ struct TodayView: View {
                 .font(Neu.number(22))
                 .foregroundStyle(abs(years) < 0.15 ? Neu.ink : (years < 0 ? Neu.younger : Neu.older))
                 .fixedSize(horizontal: false, vertical: true)
-            Text("Your Real Age is \(String(format: "%.1f", state.chronologicalAge)).")
+            Text("Your Real Age is \(String(format: "%.0f", store.age)).")
                 .font(Neu.body())
                 .foregroundStyle(Neu.muted)
         }
@@ -220,9 +232,9 @@ struct TodayView: View {
             }
             .pickerStyle(.segmented)
 
-            if state.ageHistory.isEmpty {
+            if store.data.readings.isEmpty {
                 chartPlaceholder(title: nil, body: "Complete your baseline scan to unlock your age graph.")
-            } else if state.chartRange.requiresWeekOfHistory && !state.hasWeekOfAgeData {
+            } else if store.data.chartRange.requiresWeekOfHistory && !store.hasWeekOfReadings {
                 chartPlaceholder(
                     title: "Not enough data",
                     body: "Keep scanning for a week to unlock this time range."
@@ -230,7 +242,7 @@ struct TodayView: View {
             } else if chartPoints.isEmpty {
                 chartPlaceholder(title: nil, body: "No readings in this time range yet.")
             } else {
-                AgeTrendChart(points: chartPoints, range: state.chartRange)
+                AgeTrendChart(points: chartPoints, range: store.data.chartRange)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                 legend
@@ -278,44 +290,43 @@ struct TodayView: View {
 
     private var chartRangeBinding: Binding<ChartTimeRange> {
         Binding(
-            get: { state.chartRange },
-            set: {
-                state.chartRange = $0
-                state.persistSoon()
-            }
+            get: { store.data.chartRange },
+            set: { store.setChartRange($0) }
         )
     }
 
+    /// A reading with no Cardiac Age contributes no cardiac point.
     private var chartPoints: [AgeChartPoint] {
-        let start = state.chartRange.startDate
-        let readings = state.ageHistory
+        let start = store.data.chartRange.startDate
+        let readings = store.data.readings
             .filter { $0.date >= start }
             .sorted { $0.date < $1.date }
         return readings.enumerated().flatMap { index, reading in
-            AgeMetric.allCases.map { metric in
-                AgeChartPoint(
+            AgeMetric.allCases.compactMap { metric -> AgeChartPoint? in
+                guard let age = value(in: reading, for: metric) else { return nil }
+                return AgeChartPoint(
                     id: "\(reading.id.uuidString)-\(metric.rawValue)",
                     date: reading.date,
                     index: index,
                     metric: metric,
-                    age: value(in: reading, for: metric)
+                    age: age
                 )
             }
         }
     }
 
-    private func value(in reading: AgeReading, for metric: AgeMetric) -> Double {
+    private func value(in reading: AgeReading, for metric: AgeMetric) -> Double? {
         switch metric {
-        case .real: reading.chronologicalAge
-        case .biological: reading.biologicalAge
-        case .cardiac: reading.cardiacAge
-        case .respiratory: reading.respiratoryAge
+        case .real: return reading.chronological
+        case .biological: return reading.biological
+        case .cardiac: return reading.cardiac
+        case .respiratory: return reading.pulmonary
         }
     }
 
     // MARK: Last scan stats
 
-    private var snapshotSection: some View {
+    private func snapshotSection(_ scan: Scan) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("From your last scan")
                 .font(Neu.heading(18))
@@ -323,7 +334,7 @@ struct TodayView: View {
                 .foregroundStyle(Neu.ink)
 
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                ForEach(snapshotStats) { stat in
+                ForEach(snapshotStats(scan)) { stat in
                     VStack(alignment: .leading, spacing: 6) {
                         Text(stat.title)
                             .font(Neu.emphasis(13))
@@ -351,17 +362,19 @@ struct TodayView: View {
         }
     }
 
-    private var snapshotStats: [SnapshotStat] {
-        guard let scan = state.latestScan else { return [] }
-        let stress = scan.stressScore
+    /// Anything the scan could not measure shows two dashes and says so.
+    private func snapshotStats(_ scan: Scan) -> [SnapshotStat] {
+        let notEnough = "Not enough data"
+        let recovery = scan.heartRateRecovery
+        let stress = scan.stressIndex
         return [
             SnapshotStat(
                 id: "pulse",
                 title: "Pulse",
-                value: "\(scan.cameraHeartRate)",
+                value: "\(scan.heartRate)",
                 unit: "bpm",
-                meaning: pulseMeaning(scan.cameraHeartRate),
-                meaningColor: scan.cameraHeartRate <= 70 ? Neu.younger : Neu.older
+                meaning: pulseMeaning(scan.heartRate),
+                meaningColor: scan.heartRate <= 70 ? Neu.younger : Neu.older
             ),
             SnapshotStat(
                 id: "breathing",
@@ -373,19 +386,35 @@ struct TodayView: View {
             ),
             SnapshotStat(
                 id: "recovery",
-                title: "Recovery",
-                value: "\(scan.hrrObserved)",
-                unit: "beats",
-                meaning: recoveryMeaning(scan.hrrObserved),
-                meaningColor: scan.hrrObserved >= 18 ? Neu.younger : Neu.older
+                title: "Heart Rate Recovery",
+                value: recovery.map { "\($0)" } ?? "--",
+                unit: recovery == nil ? "" : "beats",
+                meaning: recovery.map(recoveryMeaning) ?? notEnough,
+                meaningColor: recovery.map { $0 >= 18 ? Neu.younger : Neu.older } ?? Neu.muted
+            ),
+            SnapshotStat(
+                id: "hrv",
+                title: "HRV (RMSSD)",
+                value: scan.rmssd.map { String(format: "%.0f", $0) } ?? "--",
+                unit: scan.rmssd == nil ? "" : "ms",
+                meaning: scan.rmssd == nil ? notEnough : "From the camera",
+                meaningColor: Neu.muted
             ),
             SnapshotStat(
                 id: "stress",
-                title: "Stress",
-                value: stress > 0 ? String(format: "%.0f", stress) : "--",
+                title: "Stress Index",
+                value: stress.map { String(format: "%.0f", $0) } ?? "--",
                 unit: "",
-                meaning: stressMeaning(stress),
-                meaningColor: stress <= 0 ? Neu.muted : (stress <= 150 ? Neu.younger : Neu.older)
+                meaning: stress.map(stressMeaning) ?? notEnough,
+                meaningColor: stress.map { $0 <= 150 ? Neu.younger : Neu.older } ?? Neu.muted
+            ),
+            SnapshotStat(
+                id: "confidence",
+                title: "Pulse Confidence",
+                value: String(format: "%.0f", scan.pulseConfidence),
+                unit: "%",
+                meaning: scan.pulseConfidence >= 85 ? "Strong signal" : (scan.pulseConfidence >= 60 ? "Usable signal" : "Weak signal"),
+                meaningColor: scan.pulseConfidence >= 60 ? Neu.younger : Neu.older
             )
         ]
     }
@@ -410,26 +439,22 @@ struct TodayView: View {
         return "Slow to settle"
     }
 
-    private func stressMeaning(_ score: Double) -> String {
-        if score <= 0 { return "Not captured yet" }
-        if score <= 80 { return "Calm" }
-        if score <= 150 { return "Typical" }
-        if score <= 300 { return "Elevated" }
+    private func stressMeaning(_ index: Double) -> String {
+        if index <= 80 { return "Calm" }
+        if index <= 150 { return "Typical" }
+        if index <= 300 { return "Elevated" }
         return "Running high"
     }
 
     // MARK: What is adding years
 
-    private var visibleFactors: [AgeFactor] {
-        state.factorBreakdown
-            .filter { abs($0.yearsDelta) >= 0.15 }
-            .sorted { abs($0.yearsDelta) > abs($1.yearsDelta) }
-    }
-
+    /// Each bar is that factor's share of Biological Age, straight from the engine.
     @ViewBuilder
-    private var yearsSection: some View {
-        let factors = visibleFactors
-        let maxYears = max(factors.map { abs($0.yearsDelta) }.max() ?? 1, 0.8)
+    private func yearsSection(_ estimate: AgeEstimate) -> some View {
+        let factors = estimate.factors
+            .filter { abs($0.years) >= 0.05 }
+            .sorted { abs($0.years) > abs($1.years) }
+        let maxYears = max(factors.map { abs($0.years) }.max() ?? 1, 0.8)
         if !factors.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
                 Text("What’s adding years")
@@ -439,14 +464,14 @@ struct TodayView: View {
 
                 VStack(alignment: .leading, spacing: 14) {
                     ForEach(factors) { factor in
-                        let tint = factor.yearsDelta > 0 ? Neu.older : Neu.younger
+                        let tint = factor.years > 0 ? Neu.older : Neu.younger
                         VStack(alignment: .leading, spacing: 6) {
                             HStack {
-                                Text(friendlyFactor(factor.title))
+                                Text(factor.title)
                                     .font(Neu.emphasis(16))
                                     .foregroundStyle(Neu.ink)
                                 Spacer()
-                                Text(String(format: "%+.1f yrs", factor.yearsDelta))
+                                Text(String(format: "%+.1f yrs", factor.years))
                                     .font(Neu.button(16))
                                     .foregroundStyle(tint)
                                     .monospacedDigit()
@@ -457,7 +482,7 @@ struct TodayView: View {
                                         .fill(Neu.ink.opacity(0.08))
                                     Capsule()
                                         .fill(tint)
-                                        .frame(width: geo.size.width * CGFloat(min(1, abs(factor.yearsDelta) / maxYears)))
+                                        .frame(width: geo.size.width * CGFloat(min(1, abs(factor.years) / maxYears)))
                                 }
                             }
                             .frame(height: 7)
@@ -468,18 +493,6 @@ struct TodayView: View {
                 .background(ConvexShape(shape: RoundedRectangle(cornerRadius: 20, style: .continuous)))
             }
         }
-    }
-
-    private func friendlyFactor(_ title: String) -> String {
-        let lower = title.lowercased()
-        if lower.contains("cardiac") { return "Heart recovery" }
-        if lower.contains("respiratory") { return "Breathing" }
-        if lower.contains("hrv") { return "Day-to-day recovery" }
-        if lower.contains("resting") { return "Resting pulse" }
-        if lower.contains("vascular") { return "Circulation" }
-        if lower.contains("sleep") { return "Sleep" }
-        if lower.contains("step") { return "Daily movement" }
-        return title
     }
 }
 
@@ -638,6 +651,6 @@ private struct AgeTrendChart: View {
 }
 
 #Preview {
-    @Previewable @State var state = UserRecoveryState.preview
-    TodayView(state: state)
+    @Previewable @State var store = Store.preview
+    TodayView(store: store, coach: Coach(store: store))
 }
