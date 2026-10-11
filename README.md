@@ -6,6 +6,8 @@
   Builds on <a href="https://github.com/krishh-12/outrunn">outrunn</a>, created by Amulya Bisaria, Anish Koduri, Krish Hariharan, and Srivanth Rudrangi at HackRice 16, where it won the Gemini API Integration award, sponsored by Google. See the <a href="https://devpost.com/software/tamu-8zs5vy">Devpost page</a>.
 </p>
 
+- Live on Vercel: [outrunn.vercel.app](https://outrunn.vercel.app)
+
 <!--- iOS app --->
 <p align="center"><sub><b>iOS App:</b></sub></p>
 <p align="center">
